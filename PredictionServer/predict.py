@@ -20,23 +20,19 @@ MAX_SEQ_LEN = 1024
 def _fix_onnx_dynamic_shapes(model_path):
     static_path = model_path.replace(".onnx", "_static.onnx")
     import onnx
-    from onnx import shape_inference
+    from onnxsim import simplify
     model = onnx.load(model_path)
-    for inp in model.graph.input:
-        for dim in inp.type.tensor_type.shape.dim:
-            if dim.dim_param == "batch_size":
-                dim.dim_value = 1
-                dim.dim_param = ""
-            elif dim.dim_param == "seq_len":
-                dim.dim_value = MAX_SEQ_LEN
-                dim.dim_param = ""
-    for out in model.graph.output:
-        for dim in out.type.tensor_type.shape.dim:
-            if dim.dim_param == "batch_size":
-                dim.dim_value = 1
-                dim.dim_param = ""
-    model = shape_inference.infer_shapes(model)
-    onnx.save(model, static_path)
+    simplified, ok = simplify(
+        model,
+        overwrite_input_shapes={
+            "tokens": [1, MAX_SEQ_LEN],
+            "lengths": [1],
+            "non_pad_mask": [1, MAX_SEQ_LEN],
+        },
+    )
+    if not ok:
+        raise RuntimeError(f"Failed to simplify {model_path}")
+    onnx.save(simplified, static_path)
     return static_path
 
 

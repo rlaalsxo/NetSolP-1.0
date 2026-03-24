@@ -1,5 +1,7 @@
 torch>=1.6
-furiosa-sdk
+furiosa-sdk[litmus]
+onnx
+onnx-simplifier
 numpy
 pandas
 fair-esm

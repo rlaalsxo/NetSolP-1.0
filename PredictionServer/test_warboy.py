@@ -4,15 +4,16 @@ from onnxsim import simplify
 import numpy as np
 
 MODEL_PATH = "models/Solubility_ESM1b_distilled_quantized.onnx"
-OUTPUT_PATH = "models/test_static.onnx"
+SEQ_LEN = 256
+OUTPUT_PATH = f"models/test_static_{SEQ_LEN}.onnx"
 
 model = onnx.load(MODEL_PATH)
 simplified, ok = simplify(
     model,
     overwrite_input_shapes={
-        "tokens": [1, 1024],
+        "tokens": [1, SEQ_LEN],
         "lengths": [1],
-        "non_pad_mask": [1, 1024],
+        "non_pad_mask": [1, SEQ_LEN],
     },
 )
 if not ok:

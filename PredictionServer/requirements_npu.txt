@@ -1,0 +1,5 @@
+torch>=1.6
+furiosa-sdk
+numpy
+pandas
+fair-esm

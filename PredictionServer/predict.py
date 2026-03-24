@@ -19,9 +19,8 @@ MAX_SEQ_LEN = 1024
 
 def _fix_onnx_dynamic_shapes(model_path):
     static_path = model_path.replace(".onnx", "_static.onnx")
-    if os.path.exists(static_path):
-        return static_path
     import onnx
+    from onnx import shape_inference
     model = onnx.load(model_path)
     for inp in model.graph.input:
         for dim in inp.type.tensor_type.shape.dim:
@@ -36,6 +35,7 @@ def _fix_onnx_dynamic_shapes(model_path):
             if dim.dim_param == "batch_size":
                 dim.dim_value = 1
                 dim.dim_param = ""
+    model = shape_inference.infer_shapes(model)
     onnx.save(model, static_path)
     return static_path
 

@@ -14,11 +14,37 @@ import numpy as np
 
 def sigmoid(x): return 1 / (1 + np.exp(-x))
 
+MAX_SEQ_LEN = 1024
+
+
+def _fix_onnx_dynamic_shapes(model_path):
+    static_path = model_path.replace(".onnx", "_static.onnx")
+    if os.path.exists(static_path):
+        return static_path
+    import onnx
+    model = onnx.load(model_path)
+    for inp in model.graph.input:
+        for dim in inp.type.tensor_type.shape.dim:
+            if dim.dim_param == "batch_size":
+                dim.dim_value = 1
+                dim.dim_param = ""
+            elif dim.dim_param == "seq_len":
+                dim.dim_value = MAX_SEQ_LEN
+                dim.dim_param = ""
+    for out in model.graph.output:
+        for dim in out.type.tensor_type.shape.dim:
+            if dim.dim_param == "batch_size":
+                dim.dim_value = 1
+                dim.dim_param = ""
+    onnx.save(model, static_path)
+    return static_path
+
 
 def create_sessions(model_paths, args):
     if args.PROVIDER == "furiosa":
         from furiosa.runtime.sync import create_runner
-        return [create_runner(mp) for mp in model_paths]
+        static_paths = [_fix_onnx_dynamic_shapes(mp) for mp in model_paths]
+        return [create_runner(sp) for sp in static_paths]
     import onnxruntime
     opts = onnxruntime.SessionOptions()
     opts.intra_op_num_threads = args.NUM_THREADS
@@ -30,9 +56,20 @@ def create_sessions(model_paths, args):
             for mp in model_paths]
 
 
+def _pad_to_static(toks, np_mask):
+    seq_len = toks.shape[1]
+    if seq_len >= MAX_SEQ_LEN:
+        return toks[:, :MAX_SEQ_LEN], np_mask[:, :MAX_SEQ_LEN]
+    pad_len = MAX_SEQ_LEN - seq_len
+    toks_padded = torch.nn.functional.pad(toks, (0, pad_len), value=1)
+    mask_padded = torch.nn.functional.pad(np_mask, (0, pad_len), value=False)
+    return toks_padded, mask_padded
+
+
 def run_inference(sessions, toks, lengths, np_mask, args):
     if args.PROVIDER == "furiosa":
-        inputs = [toks.numpy(), lengths.numpy(), np_mask.numpy()]
+        toks_p, mask_p = _pad_to_static(toks, np_mask)
+        inputs = [toks_p.numpy(), lengths.numpy(), mask_p.numpy()]
         return [s.run(inputs)[0] for s in sessions]
     inputs_names = sessions[0].get_inputs()
     ort_inputs = {
